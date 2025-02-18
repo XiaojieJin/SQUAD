@@ -11,6 +11,7 @@ import os
 import argparse
 from scipy.spatial import ConvexHull
 import gft_test_4 as gft
+import gft_test_5 as gft_5
 from shapely.geometry import Polygon, box, Point
 from collections import defaultdict
 from scipy.spatial import distance
@@ -18,6 +19,7 @@ from geo_rasterize import rasterize
 import random
 import time
 from scipy.spatial.distance import cosine
+from pathlib import Path
 
 def cal_EOR(adata):
     Area = adata.obs["Area.um2"]
@@ -125,7 +127,7 @@ def cal_solidity_circularity(adata):
     
     for name, group in groups:
         output_dict["name"].append(name)
-        polygon_coords = [(group.loc[i]["x_local_px"], group.loc[i]["y_local_px"]) for i in group.shape[0]]
+        polygon_coords = [(group.loc[i, "x_local_px"], group.loc[i, "y_local_px"]) for i in group.index]
         if len(polygon_coords) < 3:
             return None, None
     
@@ -139,7 +141,7 @@ def cal_solidity_circularity(adata):
         circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
         
         output_dict["solidity"].append(solidity)
-        output_dict["circularity"].appedn(circularity)
+        output_dict["circularity"].append(circularity)
         
     out_df = pd.DataFrame(output_dict)
     out_df = out_df.set_index("name")
@@ -406,7 +408,7 @@ def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, 
     print(f"Name of gene: {gene_name}")
     minx0, miny0, maxx0, maxy0 = polygon.bounds
     
-    print(f"This is minx0, miny0, maxx0, maxy0: {minx0, miny0, maxx0, maxy0}")
+    # print(f"This is minx0, miny0, maxx0, maxy0: {minx0, miny0, maxx0, maxy0}")
     x_coords_2 = []
     y_coords_2 = []
     for x in x_coords:
@@ -480,7 +482,7 @@ def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, 
     tmp_adata.obsm["array_col"] = y_global_px_array
     
     if (eigenvectors_low is None) and (eigenvectors_high is None):
-        low_freq, high_freq = gft.determine_frequency_ratio(tmp_adata, ratio_neighbors = tmp_ratio_neighbors)
+        low_freq, high_freq = gft_5.determine_frequency_ratio(tmp_adata, ratio_neighbors = tmp_ratio_neighbors)
         eigenvectors_low = tmp_adata.uns['FMs_after_select']["low_FMs"]
         eigenvalues_low = tmp_adata.uns['FMs_after_select']['low_FMs_frequency']
         
@@ -488,12 +490,12 @@ def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, 
         eigenvalues_high = tmp_adata.uns['FMs_after_select']['high_FMs_frequency']
         
         
-        # print("$$$$$$$$$$$$$$$$$$$$$$$")
-        # print(f"This is low frequency engenvalues: {eigenvectors_low}, which size is: {eigenvectors_low.shape}")
-        # print("$$$$$$$$$$$$$$$$$$$$$$$")
-        # print(f"This is high frequency engenvalues: {eigenvectors_high}, which size is: {eigenvectors_high.shape}")        
+        print("$$$$$$$$$$$$$$$$$$$$$$$")
+        print(f"This is low frequency engenvalues: {eigenvalues_low}, which size is: {eigenvectors_low.shape}")
+        print("$$$$$$$$$$$$$$$$$$$$$$$")
+        print(f"This is high frequency engenvalues: {eigenvalues_high}, which size is: {eigenvectors_high.shape}")        
         
-        print(high_freq)
+        # print(high_freq)
         knee_low = low_freq
         knee_high = high_freq
 
@@ -555,12 +557,12 @@ def cal_sgcc(adata, bin_size = 60, ratio_neighbors = 10, box_extend_ratio = 0):
     for name, group in groups:
         output_dict["name"].append(name)
 
-        print(f"We are calculating sgcc, test_idx = {test_idx}, bs = {bs}, k = {k}")
+        print(f"We are calculating sgcc, bs = {tmp_bin_size}, k = {tmp_ratio_neighbors}")
         print(f"For cell: {name}: ")
         if flag == 0:
-            result_g, tmp_eigenvectors, tmp_knee = get_score_list(gene_df, polygon_df, name, bin_size = bin_size, ratio_neighbors = tmp_ratio_neighbors, box_extend_ratio = 0.1)
+            result_g, tmp_eigenvectors, tmp_knee = get_score_list(gene_df, polygon_df, name, bin_size = tmp_bin_size, ratio_neighbors = tmp_ratio_neighbors, box_extend_ratio = 0.1)
         else:
-            result_g, tmp_eigenvector2, tmp_knee_2 = get_score_list(gene_df, polygon_df, name, bin_size = bin_size, ratio_neighbors = tmp_ratio_neighbors, eigenvectors = tmp_eigenvectors, knee = tmp_knee, box_extend_ratio = 0.1)
+            result_g, tmp_eigenvector2, tmp_knee_2 = get_score_list(gene_df, polygon_df, name, bin_size = tmp_bin_size, ratio_neighbors = tmp_ratio_neighbors, eigenvectors = tmp_eigenvectors, knee = tmp_knee, box_extend_ratio = 0.1)
         output_dict["score"].append(result_g)
         flag += 1
     out_df = pd.DataFrame(output_dict)
@@ -588,10 +590,10 @@ def cal_signal_noise_ratio(adata, bin_size = 60, ratio_neighbors = 10):
     for name, group in groups:
         output_dict["name"].append(name)
         if flag == 0:
-            result_g, tmp_eigenvectors_low, tmp_eigenvectors_high, tmp_knee_low, tmp_knee_high = get_score_list(gene_df, name, x_coords, y_coords, bin_size = tmp_bin_size, ratio_neighbors = tmp_ratio_neighbors)
+            result_g, tmp_eigenvectors_low, tmp_eigenvectors_high, tmp_knee_low, tmp_knee_high = get_score_list_trans(gene_df, name, x_coords, y_coords, bin_size = tmp_bin_size, ratio_neighbors = tmp_ratio_neighbors)
         else:
-            result_g, tmp_eigenvector_low_2, tmp_eigenvectors_high_2, tmp_knee_low_2, tmp_knee_high_2 = get_score_list(gene_df, name, x_coords, y_coords, bin_size = tmp_bin_size, ratio_neighbors = tmp_ratio_neighbors, eigenvectors_low = tmp_eigenvectors_low, knee_low = tmp_knee_low, eigenvectors_high = tmp_eigenvectors_high, knee_high = tmp_knee_high)
-        output_dict[k].append(result_g)
+            result_g, tmp_eigenvector_low_2, tmp_eigenvectors_high_2, tmp_knee_low_2, tmp_knee_high_2 = get_score_list_trans(gene_df, name, x_coords, y_coords, bin_size = tmp_bin_size, ratio_neighbors = tmp_ratio_neighbors, eigenvectors_low = tmp_eigenvectors_low, knee_low = tmp_knee_low, eigenvectors_high = tmp_eigenvectors_high, knee_high = tmp_knee_high)
+        output_dict["score"].append(result_g)
         flag += 1
 
     out_df = pd.DataFrame(output_dict)
@@ -603,8 +605,7 @@ common_path = "/fs/ess/PAS1475/Xiaojie/spatialQC/test_data"
 #for i in range(1,44,1):
 for j in range(1):
     i = 12
-    
-    
+   
     exprMat_file = os.path.join(common_path,f"sampled_exprMat_fov{i}.csv")
     metadata_file = os.path.join(common_path,f"sampled_metadata_fov{i}.csv")
     header = pd.read_csv(exprMat_file, nrows=1).columns.tolist()
@@ -616,7 +617,7 @@ for j in range(1):
     #df = pd.read_csv('sampled_exprMat2.csv', skiprows=1, header=None)
     df = pd.read_csv(exprMat_file)
     df['fov_cell'] = '12_' + df['cell_ID'].astype(str)
-    df2 = df.drop(columns=['fov', 'cell_ID'])
+    df2 = df.drop(columns=['fov', 'cell_ID','fov_cell'])
     #filtered out the Negative and Systemcontrol columns
     df3 = df2.loc[:, ~df2.columns.str.startswith(('Negative', 'SystemControl'))]
     counts = csr_matrix(df3)
@@ -638,25 +639,23 @@ for j in range(1):
     # Assign the metadata to adata.obs
     adata.obs = meta_df
     
-    polygon_file_name = f"simulation_{test_idx}_polygon.csv"
-    tx_file_name = f"simulation_{test_idx}_tx.csv"
+    polygon_file_name = f"sampled_polygons_fov{i}.csv"
+    tx_file_name = f"sampled_tx_fov{i}.csv"
     polygon_file_dir = os.path.join(common_path, polygon_file_name)
     tx_file_dir = os.path.join(common_path, tx_file_name)
     polygon_df = pd.read_csv(polygon_file_dir)
-    polygon_df['fov_cell'] = '12_' + polygon_df['CellID'].astype(str)
+    polygon_df['fov_cell'] = '12_' + polygon_df['cellID'].astype(str)
     gene_df = pd.read_csv(tx_file_dir)
-    gene_df['fov_cell'] = '12_' + gene_df['Cell_ID'].astype(str)
+    gene_df['fov_cell'] = '12_' + gene_df['cell_ID'].astype(str)
     
     adata.uns["tx"] = gene_df
-    adata.uns["polygon"] = tx_df
+    adata.uns["polygon"] = polygon_df
 
     cal_EOR(adata)
     cal_cell_size(adata)
     cal_sensitivity_saturation(adata)
-    
     cal_sgcc(adata)
     cal_signal_noise_ratio(adata)
-    
     cal_solidity_circularity(adata)
 
     ###########################################################################################
@@ -668,144 +667,18 @@ for j in range(1):
         csc_matrix = adata.X.tocsc()
 
     counts_matrix = csc_matrix
-    # print("Matrix shape:", counts_matrix.shape)  # 矩阵的形状
+    # print("Matrix shape:", counts_matrix.shape)
     #Method 1: scrublet
     scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.2, sim_doublet_ratio=5)
     doublet_scores, predicted_doublets = scrub.scrub_doublets()
-
-    ############################################################
-    # # Plot histogram of doublet scores
-    # plt.figure(figsize=(8, 6))
-    # plt.hist(doublet_scores, bins=30, color='skyblue', edgecolor='blue', alpha=0.7)
-
-    # # plt.figure(figsize=(12, 6))
-    # # plt.plot(np.arange(len(doublet_scores)), doublet_scores, marker='o', linestyle='-', color='skyblue')
-    # plt.xlabel('Cell Index')
-    # plt.ylabel('Doublet Score')
-    # plt.title('Doublet Scores for Each Cell')
-    # plt.savefig('hist.jpg', format='jpg', dpi=300)
-    # plt.close()
-
-    # fig, axs = scrub.plot_histogram()
-    # fig.savefig('doublet_score_histogram.png', format='png', dpi=300)
-    ############################################################
-    # Set the threshold manually
-    #scrub.call_doublets(threshold=0.6)
-    ############################################################
-
-    #result_1 = np.where(predicted_doublets, "not pass", "pass")
     result_1 = np.where(predicted_doublets, "doublet", "not doublet")
     adata.obs["scrublet_1"] = result_1
-    out_put_file = f"/bmbl_data/xiaojie/Spatial_QC/fov_package/h5ad/scrublet_result_fov{i}.h5ad"
-    adata.write(out_put_file)
-
-    # # Method 2: scrublet + position with PCA
-    # col1 = adata.obs["CenterX_global_px"].to_numpy().reshape(-1, 1)
-    # col2 = adata.obs["CenterY_global_px"].to_numpy().reshape(-1, 1)
-    # new_col1_sparse = sp.csc_matrix(col1)
-    # new_col2_sparse = sp.csc_matrix(col2)
-    # new_csc_matrix = sp.hstack([counts_matrix, new_col1_sparse, new_col2_sparse])
-    # scrub = scr.Scrublet(new_csc_matrix)
-    # doublet_scores, predicted_doublets = scrub.scrub_doublets()
-    # result_2 = np.where(predicted_doublets, "not pass", "pass")
-    # adata.obs["scrublet_2"] = result_2
 
 
-    # # Method 3: scrublet than doing the second fitering by position
-    # # Temerallly can't do since the error in annoy 
-    # # col1 = adata.obs["CenterX_global_px"].to_numpy().reshape(-1, 1)
-    # # col2 = adata.obs["CenterY_global_px"].to_numpy().reshape(-1, 1)
-    # # new_col1_sparse = sp.csc_matrix(col1)
-    # # new_col2_sparse = sp.csc_matrix(col2)
-    # # new_csc_matrix = sp.hstack([new_col1_sparse, new_col2_sparse])
-    # # scrub = scr.Scrublet(new_csc_matrix)
-    # # doublet_scores, predicted_doublets = scrub.scrub_doublets_2()
-    # # result_3 = np.where(predicted_doublets, "not pass", "pass")
-    # # adata.obs["scrublet_3"] = result_3
+    out_put_file = os.path.join(common_path, f"obs_result_fov{i}.csv")
+    out_put_file2 = os.path.join(common_path, f"var_result_fov{i}.csv")
 
-    # # print(doublet_scores)
-    # # print("###################################")
-    # # doublets_data = adata.obs[predicted_doublets]
-    # # print(doublets_data)
-    # ###########################################################################################
+    adata.obs.to_csv(out_put_file, index=True)
+    adata.var.to_csv(out_put_file2, index=True)
 
-    # ###########################################################################################
-    # # calculate SNR and abnormal value
-    # tx_df = pd.read_csv('sampled_tx.csv')
-    # tx_df_fov_cells = set(tx_df['fov_cell'].unique())
-    # tx_df_target = set(tx_df['target'].unique())
-
-    # tx_df['fov_cell_target'] = tx_df['fov'].astype(str) + '_' + tx_df['cell_ID'].astype(str) + '_' + tx_df['target'].astype(str)
-    # tx_df['counter'] = tx_df.groupby('fov_cell_target').cumcount() + 1
-    # tx_df['fov_cell_target'] = tx_df.apply(lambda x: f"{x['fov_cell_target']}_{x['counter']}", axis=1)
-
-
-    # columns = adata.var_names 
-
-    # sparse_df = pd.DataFrame(0, index=tx_df['fov_cell_target'].unique(), columns=columns)
-
-    # for index, row in tx_df.iterrows():
-    #     sparse_df.at[row['fov_cell_target'], row['target']] = 1
-
-    # result_series = pd.Series()
-    # result_series_2 = pd.Series()
-    # for idx in tx_df_fov_cells:
-    #     filtered_tx_data = tx_df[tx_df['fov_cell'] == idx]
-    #     filtered_sparse = sparse_df[sparse_df.index.str.startswith(f"{idx}_")]
-
-    #     # filtered_tx_data = filtered_tx_data.set_index('fov_cell_target')
-    #     # # Reindex the metadata to align with adata.obs_names
-    #     # # This ensures that the metadata aligns with the observations in the AnnData object
-    #     # meta_df = meta_df.reindex(adata.obs_names)
-
-    #     # print(filtered_sparse)
-    #     # print(filtered_sparse.shape)
-
-
-    #     filtered_sparse = csr_matrix(filtered_sparse)
-    #     result_df = pd.DataFrame()
-    #     #count_mtx = adata[idx, :].X
-    #     tmp_adata = ad.AnnData(filtered_sparse)
-    #     x_global_px_array = filtered_tx_data['x_global_px'].to_numpy().reshape(-1, 1)
-    #     y_global_px_array = filtered_tx_data['y_global_px'].to_numpy().reshape(-1, 1)
-    #     tmp_adata.obsm['array_row']  = x_global_px_array
-    #     tmp_adata.obsm["array_col"] = y_global_px_array
-    #     tmp_adata.var_names_make_unique()
-    #     #tmp_adata.raw = tmp_adata
-
-    #     # QC
-    #     sc.pp.filter_genes(tmp_adata, min_cells=10)
-    #     if len(tmp_adata.var_names) == 0:
-    #         result_series[idx] = 0
-    #         result_series_2[idx] = 0
-    #         continue
-    #     # Normalization
-    #     sc.pp.normalize_total(tmp_adata, inplace=True)
-    #     sc.pp.log1p(tmp_adata)
-    #     #print(tmp_adata.X)
-
-    #     (ratio_low, ratio_high) = gft.determine_frequency_ratio(tmp_adata,
-    #                                                         ratio_neighbors=1)
-    #     frequency_coefficient, num_low, num_high = gft.detect_svg(tmp_adata,
-    #                         spatial_info=['array_row', 'array_col'],
-    #                         ratio_low_freq=ratio_low,
-    #                         ratio_high_freq=ratio_high,
-    #                         ratio_neighbors=1,
-    #                         filter_peaks=True,
-    #                         S=6)
-
-    #     low_freq_power = np.sum(np.square(frequency_coefficient[:num_low, :]), axis=0)/num_low
-    #     high_freq_power = np.sum(np.square(frequency_coefficient[-num_high:, :]), axis=0)/num_high
-    #     ratio = high_freq_power / low_freq_power
-    #     average_ratio = np.mean(ratio)
-
-    #     result_series[idx] = average_ratio
-    #     abnormal_value = process_matrix(frequency_coefficient)
-    #     result_series_2[idx] = abnormal_value
-    # print(result_series)
-    # print("##################################")
-    # print(result_series_2)
-    # adata.obs["SNR"] = result_series
-    # adata.obs["abnormal_value"] = result_series_2
-
-         
+    print(f"Successfully saved adata.obs to: {out_put_file}")
