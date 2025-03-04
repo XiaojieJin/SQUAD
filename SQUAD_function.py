@@ -718,8 +718,8 @@ def process_data(fov_number, common_path):
     print(f"scrublet's running time is {time.time() - start_time_7:.4f} seconds")
 
 
-    out_put_file = os.path.join(common_path, f"obs_result_fov{fov_number}3.csv")
-    out_put_file2 = os.path.join(common_path, f"var_result_fov{fov_number}3.csv")
+    out_put_file = os.path.join(common_path, f"obs_result_fov{fov_number}.csv")
+    out_put_file2 = os.path.join(common_path, f"var_result_fov{fov_number}.csv")
 
     adata.obs.to_csv(out_put_file, index=True)
     adata.var.to_csv(out_put_file2, index=True)
@@ -729,7 +729,7 @@ def process_data(fov_number, common_path):
 def main():
     parser = argparse.ArgumentParser(description="Process spatial transcriptomics data.")
     parser.add_argument('--fov', type=int, required=True, help="Field of view number")
-    parser.add_argument('--path', type=str, required=True, help=f"Path to the dataset, the name of the input file should be in sampled_exprMat_fov\{fov_name\}.csv; sampled_tx_fov\{fov_name\}.csv; sampled_metadata_fov\{fov_name\}.csv; sampled_polygons_fov\{fov_name\}.csv format.\n and the output is in the same folder with cell-level score in obs_result_fov\{fov_number\}3.csv and transcript-level score in var_result_fov\{fov_number\}3.csv")
+    parser.add_argument('--path', type=str, required=True, help=f"Path to the dataset, the name of the input file should be in sampled_exprMat_fov\{fov_name\}.csv; sampled_tx_fov\{fov_name\}.csv; sampled_metadata_fov\{fov_name\}.csv; sampled_polygons_fov\{fov_name\}.csv format.\n and the output is in the same folder with cell-level score in obs_result_fov\{fov_number\}.csv and transcript-level score in var_result_fov\{fov_number\}.csv")
     args = parser.parse_args()
 
     process_data(args.fov, args.path)
