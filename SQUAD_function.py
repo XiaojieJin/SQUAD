@@ -83,7 +83,7 @@ def cal_cell_size(adata):
         adata.obs["cell_size_score"] = result
         print("The data is Gaussian (normal distribution) (fail to reject H0)")
     else:
-        adata.obs["cell_size_score"] = np.ones(adata.n_obs)*(-1)
+        adata.obs["cell_size_score"] = adata.obs["Area.um2"]
         print("The data is not Gaussian (reject H0)")
 
 def cal_sensitivity_saturation(adata):
@@ -332,6 +332,7 @@ def get_score_list(gene_df, polygon_df, cell_name, bin_size = 25, ratio_neighbor
 
     # print("Start preparing gene")
     # Filter and draw the genes that fall within the bounding box of the red polygon
+    
     genes_in_box = gene_df[
         (gene_df['x_local_px'] >= minx0) &
         (gene_df['x_local_px'] <= maxx0) &
@@ -351,8 +352,10 @@ def get_score_list(gene_df, polygon_df, cell_name, bin_size = 25, ratio_neighbor
             point_list.append(gene_point)
         elif gene["CellComp"] not in ["Membrane","Nuclear","Cytoplasm"]:
             point_list.append(gene_point)
-
-
+    
+    
+                              
+    
     # Convert the shapely Polygon to a list of shapes (as geo-rasterize expects)
     shapes = point_list
     
@@ -376,7 +379,6 @@ def get_score_list(gene_df, polygon_df, cell_name, bin_size = 25, ratio_neighbor
     tmp_adata2.obsm["array_col"] = y_global_px_array
     
     cos_similarity = cal_gcc(knee, tmp_adata.X, tmp_adata2.X, eigenvectors)
-    
     # print(f"This is knee: {knee}")
     # print(f"This is cos_similarity: {cos_similarity}")
     return cos_similarity, eigenvectors, knee
@@ -397,6 +399,8 @@ def cal_snr(knee_low, knee_high, low_signal, high_signal, eigenvectors_low, eige
     return snr
 
 def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, ratio_neighbors = 1, eigenvectors_low = None, knee_low = 0, eigenvectors_high = None, knee_high = 0):
+    start_time_get_adata = time.time()
+    
     
     tmp_ratio_neighbors = ratio_neighbors
     # Append the first point to close the polygon
@@ -481,7 +485,11 @@ def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, 
     tmp_adata.obsm['array_row']  = x_global_px_array
     tmp_adata.obsm["array_col"] = y_global_px_array
     
+    
+    print(f"start_time_get_adata's running time is {time.time() - start_time_get_adata:.4f} seconds")
     if (eigenvectors_low is None) and (eigenvectors_high is None):
+        start_time_GFT = time.time()
+    
         low_freq, high_freq = gft_5.determine_frequency_ratio(tmp_adata, ratio_neighbors = tmp_ratio_neighbors)
         eigenvectors_low = tmp_adata.uns['FMs_after_select']["low_FMs"]
         eigenvalues_low = tmp_adata.uns['FMs_after_select']['low_FMs_frequency']
@@ -498,19 +506,33 @@ def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, 
         # print(high_freq)
         knee_low = low_freq
         knee_high = high_freq
+        
+        print(f"GFT's running time is {time.time() - start_time_GFT:.4f} seconds")
 
     ########################################
     
+    
+    start_time_get_adata_2 = time.time()
+    
+    start_time_point_list = time.time()
     point_list = []
     genes_in_box = gene_df
     genes_in_box["x_modified_px"] = (genes_in_box['x_local_px'] - minx0)/((maxx0-minx0)/bin_size)
     genes_in_box["y_modified_px"] = (genes_in_box['y_local_px'] - miny0)/((maxy0-miny0)/bin_size)
-    # Loop through each gene and check if it is inside or outside the red polygon
-    for idx, gene in genes_in_box.iterrows():
-        gene_point = Point(gene["x_modified_px"], gene["y_modified_px"])
-        if gene["target"] == gene_name:
-            point_list.append(gene_point)
-
+    
+    
+    filtered_genes = genes_in_box[genes_in_box["target"] == gene_name]
+    #print(filtered_genes["x_modified_px"])
+    #print(filtered_genes["y_modified_px"])
+    point_array = np.column_stack((filtered_genes["x_modified_px"], filtered_genes["y_modified_px"]))
+    point_list = [Point(x, y) for x, y in point_array]
+    #print(point_list)
+    #point_list = point_array.tolist()
+    #point_list = list(map(tuple, point_array.tolist()))
+    
+    print(f"get_point_list's running time is {time.time() - start_time_point_list:.4f} seconds")
+    start_time_get_X = time.time()
+                              
     # Convert the shapely Polygon to a list of shapes (as geo-rasterize expects)
     shapes = point_list
     
@@ -532,8 +554,12 @@ def get_score_list_trans(gene_df, gene_name, x_coords, y_coords, bin_size = 25, 
     tmp_adata2 = ad.AnnData(filtered_sparse)
     tmp_adata2.obsm['array_row']  = x_global_px_array
     tmp_adata2.obsm["array_col"] = y_global_px_array
+    print(f"get_X's running time is {time.time() - start_time_get_X:.4f} seconds")
+    print(f"get_adata_2's running time is {time.time() - start_time_get_adata_2:.4f} seconds")
     
+    start_time_cal_snr = time.time()
     snr = cal_snr(knee_low, knee_high, tmp_adata2.X, tmp_adata2.X, eigenvectors_low, eigenvectors_high)
+    print(f"cal_snr's running time is {time.time() - start_time_cal_snr:.4f} seconds")
     
     print(f"This is knee: {knee_low}")
     print(f"This is knee: {knee_high}")
@@ -601,26 +627,23 @@ def cal_signal_noise_ratio(adata, bin_size = 60, ratio_neighbors = 10):
     out_df = out_df.reindex(adata.var_names)
     adata.var["snr"] = out_df["score"]
 
-common_path = "/fs/ess/PAS1475/Xiaojie/spatialQC/test_data"
-#for i in range(1,44,1):
-for j in range(1):
-    i = 12
-   
-    exprMat_file = os.path.join(common_path,f"sampled_exprMat_fov{i}.csv")
-    metadata_file = os.path.join(common_path,f"sampled_metadata_fov{i}.csv")
+def process_data(fov_number, common_path):
+    
+    exprMat_file = os.path.join(common_path,f"sampled_exprMat_fov{fov_number}.csv")
+    metadata_file = os.path.join(common_path,f"sampled_metadata_fov{fov_number}.csv")
     header = pd.read_csv(exprMat_file, nrows=1).columns.tolist()
     to_remove = ['fov', 'cell_ID']
     for item in to_remove:
             header.remove(item)
-    header = [col for col in header if not col.startswith(('Negative', 'SystemControl'))]
+    header = [col for col in header]
     # Read the rest of the file, skipping the first row
     #df = pd.read_csv('sampled_exprMat2.csv', skiprows=1, header=None)
     df = pd.read_csv(exprMat_file)
     df['fov_cell'] = '12_' + df['cell_ID'].astype(str)
     df2 = df.drop(columns=['fov', 'cell_ID','fov_cell'])
     #filtered out the Negative and Systemcontrol columns
-    df3 = df2.loc[:, ~df2.columns.str.startswith(('Negative', 'SystemControl'))]
-    counts = csr_matrix(df3)
+    #df3 = df2.loc[:, ~df2.columns.str.startswith(('Negative', 'SystemControl'))]
+    counts = csr_matrix(df2)
     adata = ad.AnnData(counts)
 
     # Set row name and column names
@@ -639,24 +662,43 @@ for j in range(1):
     # Assign the metadata to adata.obs
     adata.obs = meta_df
     
-    polygon_file_name = f"sampled_polygons_fov{i}.csv"
-    tx_file_name = f"sampled_tx_fov{i}.csv"
+    polygon_file_name = f"sampled_polygons_fov{fov_number}.csv"
+    tx_file_name = f"sampled_tx_fov{fov_number}.csv"
     polygon_file_dir = os.path.join(common_path, polygon_file_name)
     tx_file_dir = os.path.join(common_path, tx_file_name)
     polygon_df = pd.read_csv(polygon_file_dir)
-    polygon_df['fov_cell'] = '12_' + polygon_df['cellID'].astype(str)
+    polygon_df['fov_cell'] = f'{fov_number}_' + polygon_df['cellID'].astype(str)
     gene_df = pd.read_csv(tx_file_dir)
-    gene_df['fov_cell'] = '12_' + gene_df['cell_ID'].astype(str)
+    gene_df['fov_cell'] = f'{fov_number}_' + gene_df['cell_ID'].astype(str)
     
     adata.uns["tx"] = gene_df
     adata.uns["polygon"] = polygon_df
 
+    start_time_1 = time.time()
     cal_EOR(adata)
+    print(f"cal_EOR's running time is {time.time() - start_time_1:.4f} seconds")
+    
+    start_time_2 = time.time()
     cal_cell_size(adata)
+    print(f"cal_cell_size's running time is {time.time() - start_time_2:.4f} seconds")
+    
+    start_time_3 = time.time()
     cal_sensitivity_saturation(adata)
+    print(f"cal_sensitivity_saturation's running time is {time.time() - start_time_3:.4f} seconds")
+    
+    start_time_4 = time.time()
     cal_sgcc(adata)
+    print(f"cal_sgcc's running time is {time.time() - start_time_4:.4f} seconds")
+    
+    start_time_5 = time.time()
     cal_signal_noise_ratio(adata)
+    print(f"cal_signal_noise_ratio's running time is {time.time() - start_time_5:.4f} seconds")
+    
+    start_time_6 = time.time()
     cal_solidity_circularity(adata)
+    print(f"cal_solidity_circularity's running time is {time.time() - start_time_6:.4f} seconds")
+    
+    start_time_7 = time.time()
 
     ###########################################################################################
     # calculate the probability of being doublet
@@ -669,16 +711,29 @@ for j in range(1):
     counts_matrix = csc_matrix
     # print("Matrix shape:", counts_matrix.shape)
     #Method 1: scrublet
-    scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.2, sim_doublet_ratio=5)
+    scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.3, sim_doublet_ratio=30)
     doublet_scores, predicted_doublets = scrub.scrub_doublets()
     result_1 = np.where(predicted_doublets, "doublet", "not doublet")
     adata.obs["scrublet_1"] = result_1
+    print(f"scrublet's running time is {time.time() - start_time_7:.4f} seconds")
 
 
-    out_put_file = os.path.join(common_path, f"obs_result_fov{i}.csv")
-    out_put_file2 = os.path.join(common_path, f"var_result_fov{i}.csv")
+    out_put_file = os.path.join(common_path, f"obs_result_fov{fov_number}3.csv")
+    out_put_file2 = os.path.join(common_path, f"var_result_fov{fov_number}3.csv")
 
     adata.obs.to_csv(out_put_file, index=True)
     adata.var.to_csv(out_put_file2, index=True)
 
     print(f"Successfully saved adata.obs to: {out_put_file}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Process spatial transcriptomics data.")
+    parser.add_argument('--fov', type=int, required=True, help="Field of view number")
+    parser.add_argument('--path', type=str, required=True, help=f"Path to the dataset, the name of the input file should be in sampled_exprMat_fov\{fov_name\}.csv; sampled_tx_fov\{fov_name\}.csv; sampled_metadata_fov\{fov_name\}.csv; sampled_polygons_fov\{fov_name\}.csv format.\n and the output is in the same folder with cell-level score in obs_result_fov\{fov_number\}3.csv and transcript-level score in var_result_fov\{fov_number\}3.csv")
+    args = parser.parse_args()
+
+    process_data(args.fov, args.path)
+
+
+if __name__ == "__main__":
+    main()
