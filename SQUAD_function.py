@@ -713,23 +713,35 @@ def process_data(fov_number, common_path):
     #Method 1: scrublet
     scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.3, sim_doublet_ratio=30)
     doublet_scores, predicted_doublets = scrub.scrub_doublets()
-    result_1 = np.where(predicted_doublets, "doublet", "not doublet")
+    #result_1 = np.where(predicted_doublets, "doublet", "not doublet")
+    result_1 = doublet_scores 
     adata.obs["scrublet_1"] = result_1
     print(f"scrublet's running time is {time.time() - start_time_7:.4f} seconds")
 
 
-    out_put_file = os.path.join(common_path, f"obs_result_fov{fov_number}.csv")
-    out_put_file2 = os.path.join(common_path, f"var_result_fov{fov_number}.csv")
+    out_put_file = os.path.join(common_path, f"obs_result_fov{fov_number}4.csv")
+    out_put_file2 = os.path.join(common_path, f"var_result_fov{fov_number}4.csv")
 
     adata.obs.to_csv(out_put_file, index=True)
     adata.var.to_csv(out_put_file2, index=True)
 
     print(f"Successfully saved adata.obs to: {out_put_file}")
+    
+    # 在保存h5ad之前，将uns中的DataFrame转换为字符串类型
+    if "tx" in adata.uns:
+        adata.uns["tx"] = adata.uns["tx"].astype(str)
+    if "polygon" in adata.uns:
+        adata.uns["polygon"] = adata.uns["polygon"].astype(str)
+    
+    # 保存h5ad文件
+    h5ad_file = os.path.join(common_path, f"adata_fov{fov_number}4.h5ad")
+    adata.write_h5ad(h5ad_file)
+    print(f"Successfully saved AnnData object to: {h5ad_file}")
 
 def main():
     parser = argparse.ArgumentParser(description="Process spatial transcriptomics data.")
     parser.add_argument('--fov', type=int, required=True, help="Field of view number")
-    parser.add_argument('--path', type=str, required=True, help=f"Path to the dataset, the name of the input file should be in sampled_exprMat_fov\{fov_name\}.csv; sampled_tx_fov\{fov_name\}.csv; sampled_metadata_fov\{fov_name\}.csv; sampled_polygons_fov\{fov_name\}.csv format.\n and the output is in the same folder with cell-level score in obs_result_fov\{fov_number\}.csv and transcript-level score in var_result_fov\{fov_number\}.csv")
+    parser.add_argument('--path', type=str, required=True, help="Path to the dataset")
     args = parser.parse_args()
 
     process_data(args.fov, args.path)
@@ -737,3 +749,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+         
